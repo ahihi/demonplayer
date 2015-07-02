@@ -15,6 +15,7 @@ const FRAMES_PER_BUFFER: u32 = 512;
 pub struct Demonplayer {
     output_name: String,
     stream: DStream,
+    start_time: pa::Time,
 }
 
 fn sine(freq: f32, i: u64) -> DSample {
@@ -98,11 +99,21 @@ impl Demonplayer {
         Ok(Demonplayer {
             output_name:    output_info.name,
             stream:         stream,
+            start_time:     0.0,
         })
     }
-    
+        
     pub fn play(&mut self) -> DResult<()> {
+        self.start_time = self.stream.get_stream_time();
         self.stream.start()
+    }
+    
+    pub fn position(&self) -> pa::Time {
+        if let Ok(true) = self.stream.is_active() {
+            self.stream.get_stream_time() - self.start_time
+        } else {
+            0.0
+        }
     }
     
     pub fn print_info(&self) {
