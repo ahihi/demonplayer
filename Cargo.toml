@@ -1,0 +1,15 @@
+[package]
+name = "demonplayer"
+version = "0.1.0"
+authors = ["Miranda Kastemaa <miranda@foldplop.com>"]
+
+[lib]
+name = "demonplayer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "demonplayer-demo"
+path = "src/main.rs"
+
+[dependencies.portaudio]
+git = "https://github.com/ahihi/rust-portaudio"
