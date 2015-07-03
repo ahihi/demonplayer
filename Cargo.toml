@@ -11,5 +11,8 @@ path = "src/lib.rs"
 name = "demonplayer-demo"
 path = "src/main.rs"
 
+[dependencies.claxon]
+git = "https://github.com/ahihi/claxon"
+
 [dependencies.portaudio]
 git = "https://github.com/ahihi/rust-portaudio"
