@@ -1,24 +1,52 @@
+extern crate claxon;
 extern crate portaudio;
 
+use claxon::frame::FrameReader;
 use portaudio::pa;
+use std::convert::From;
 use std::error::Error;
-use std::f32::consts;
+use std::fs::File;
+use std::io;
+use std::path::Path;
 use std::result::Result;
 
 pub type DSample = f32;
 pub type DStream = pa::Stream<DSample, DSample>;
-pub type DResult<T> = Result<T, pa::error::Error>;
-const SAMPLE_FORMAT: pa::SampleFormat = pa::SampleFormat::Float32;
-const SAMPLE_RATE: f64 = 44100.0;
-const FRAMES_PER_BUFFER: u32 = 512;
 
-pub struct Demonplayer {
-    output_name: String,
-    stream: DStream,
-    start_time: pa::Time,
+#[derive(Debug)]
+pub enum DError {
+    Io(io::Error),
+    Claxon(claxon::error::Error)
 }
 
-fn sine(freq: f32, i: u64) -> DSample {
+impl From<io::Error> for DError {
+    fn from(e: io::Error) -> DError {
+        DError::Io(e)
+    }
+}
+
+impl From<claxon::error::Error> for DError {
+    fn from(e: claxon::error::Error) -> DError {
+        DError::Claxon(e)
+    }
+}
+
+pub type DResult<T> = Result<T, DError>;
+
+/*const SAMPLE_FORMAT: pa::SampleFormat = pa::SampleFormat::Float32;
+const SAMPLE_RATE: f64 = 44100.0;
+const FRAMES_PER_BUFFER: u32 = 512;*/
+
+pub struct Demonplayer {
+    //output_name: String,
+    flac_info: claxon::metadata::StreamInfo,
+    n_samples: usize,
+    buffer: Vec<i32>
+    //stream: DStream,
+    //start_time: pa::Time,
+}
+
+/*fn sine(freq: f32, i: u64) -> DSample {
     ((i as f32) / (SAMPLE_RATE as f32) * freq * 2.0 * consts::PI).sin()
 }
 
@@ -29,10 +57,73 @@ fn sines(i: u64) -> DSample {
     let high_amp = 0.2 * sine(0.1, i);
     
     low_amp*low + high_amp*high
-}
+}*/
 
 impl Demonplayer {    
-    pub fn new() -> DResult<Demonplayer> {
+    pub fn from_flac(path: &Path) -> DResult<Demonplayer> {
+        // Open the flac stream
+        println!("Open stream");
+        let file = try!(File::open(path));
+        let mut reader = io::BufReader::new(file);
+        let mut stream = try!(claxon::FlacStream::new(&mut reader));
+        
+        // Get stream info
+        println!("Get stream info");
+        let info = *stream.streaminfo();
+        let n_samples = info.n_samples
+                        .unwrap_or_else(|| {
+                            panic!("n_samples = None")
+                        }) as usize;
+                        
+        // Read the entire stream into a buffer
+        println!("Make buffer");
+        let buffer_size = info.n_channels as usize * n_samples;
+        let mut buffer = Vec::<i32>::with_capacity(buffer_size);
+        unsafe { buffer.set_len(buffer_size) };
+        
+        println!("Fill buffer");
+        let mut frame_reader: FrameReader<i32> = stream.blocks();
+        while let Ok(block) = frame_reader.read_next() {            
+            let channels = block.channels();
+            for i_ch in 0 .. channels {
+                let ch = block.channel(i_ch);
+                for (i_sample, sample) in ch.iter().enumerate() {
+                    let i_buffer = 3*i_sample + (i_ch as usize);
+                    buffer[i_buffer] = *sample;
+                }
+            }
+        }
+        
+        println!("Done");
+
+        Ok(Demonplayer {
+            flac_info: info,
+            n_samples: n_samples,
+            buffer: buffer
+        })
+    }
+    
+    pub fn sample_rate(&self) -> u32 {
+        self.flac_info.sample_rate
+    }
+        
+    pub fn bit_depth(&self) -> u8 {
+        self.flac_info.bits_per_sample
+    }
+    
+    pub fn channels(&self) -> u8 {
+        self.flac_info.n_channels
+    }
+    
+    pub fn n_samples(&self) -> usize {
+        self.n_samples
+    }
+    
+    pub fn duration(&self) -> f32 {
+        (self.n_samples() as f32) / (self.sample_rate() as f32)
+    }
+        
+    /*pub fn new() -> DResult<Demonplayer> {
         try!(pa::initialize());
         
         let default_output = pa::device::get_default_output();
@@ -134,12 +225,12 @@ impl Demonplayer {
             Some(info) => Some(info.name),
         };
         api_name
-    }
+    }*/
 }
 
 impl Drop for Demonplayer {
     fn drop(&mut self) {
-        self.stream.close()
+        /*self.stream.close()
         .unwrap_or_else(|e| {
             println!("stream.close() failed: {}", e.description());
         });
@@ -147,6 +238,6 @@ impl Drop for Demonplayer {
         pa::terminate()
         .unwrap_or_else(|e| {
             println!("pa::terminate() failed: {}", e.description());
-        });
+        });*/
     }
 }
