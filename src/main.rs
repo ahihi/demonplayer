@@ -29,9 +29,9 @@ fn main() {
     println!("");
     wait_for_line("Press return to play");
     let _ = player.play();
-    
+
     loop {
-        println!("Position: {}", player.position());
+        println!("Position: {:?}", player.position());
         sleep_ms(100);
     }
 }

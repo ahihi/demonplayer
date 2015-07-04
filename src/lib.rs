@@ -55,14 +55,14 @@ pub struct Demonplayer {
     start_time: RefCell<pa::Time>,
 }
 
-impl Demonplayer {    
+impl Demonplayer {
     pub fn from_flac(path: &Path) -> DResult<Demonplayer> {
         let (info, n_samples, buffer) = try!(Self::read_flac(path));
-                
+
         println!("Init audio");
         let (_output_name, out_stream_params, stream)
             = try!(Self::init_audio(info.sample_rate as f64));
-        
+
         println!("Create player");
         let player = Demonplayer {
             flac_info: info,
@@ -83,9 +83,9 @@ impl Demonplayer {
         | -> pa::StreamCallbackResult {
             assert!(frames == FRAMES_PER_BUFFER);
 
-            let mut result = pa::StreamCallbackResult::Continue;            
+            let mut result = pa::StreamCallbackResult::Continue;
             for output_sample in output.iter_mut() {
-                let sample  
+                let sample
                     = if index < buffer.len() {
                         buffer[index]
                     } else {
@@ -98,7 +98,7 @@ impl Demonplayer {
 
             result
         });
-        
+
         // Register callback
         println!("Register callback");
         try!(player.stream.borrow_mut().open(
@@ -109,19 +109,19 @@ impl Demonplayer {
             pa::StreamFlags::empty(),
             Some(callback)
         ));
-        
+
         println!("Done");
 
         Ok(player)
     }
-    
+
     fn read_flac(path: &Path) -> DResult<(claxon::metadata::StreamInfo, usize, Vec<DSample>)> {
         // Open the flac stream
         println!("Open stream");
         let file = try!(File::open(path));
         let mut reader = io::BufReader::new(file);
         let mut stream = try!(claxon::FlacStream::new(&mut reader));
-        
+
         // Get stream info
         println!("Get stream info");
         let info = *stream.streaminfo();
@@ -129,19 +129,19 @@ impl Demonplayer {
                         .unwrap_or_else(|| {
                             panic!("n_samples = None")
                         }) as usize;
-                        
+
         // Read the entire stream into a buffer
         println!("Make buffer");
         let buffer_size = info.n_channels as usize * n_samples;
         let mut buffer = Vec::<i32>::with_capacity(buffer_size);
         unsafe { buffer.set_len(buffer_size) };
-        
+
         println!("Fill buffer");
         let sample_shift = 8*mem::size_of::<DSample>() - info.bits_per_sample as usize;
         println!("sample_shift = {}", sample_shift);
         let mut frame_reader: FrameReader<i32> = stream.blocks();
         let mut sample_offset = 0usize;
-        while let Ok(block) = frame_reader.read_next() {            
+        while let Ok(block) = frame_reader.read_next() {
             let channels = block.channels();
             for i_ch in 0 .. channels {
                 let ch = block.channel(i_ch);
@@ -152,16 +152,16 @@ impl Demonplayer {
             }
             sample_offset += block.len() as usize;
         }
-        
+
         Ok((info, n_samples, buffer))
     }
-    
+
     fn init_audio(sample_rate: f64) -> DResult<(String, pa::StreamParameters, DStream)> {
         try!(pa::initialize());
-    
+
         let default_output = pa::device::get_default_output();
         let output_info = try!(pa::device::get_info(default_output));
-                      
+
         let out_stream_params = pa::StreamParameters {
             device:             default_output,
             channel_count:      2,
@@ -169,32 +169,32 @@ impl Demonplayer {
             suggested_latency:  output_info.default_low_output_latency,
         };
         try!(pa::is_format_supported(None, Some(&out_stream_params), sample_rate));
-    
+
         let stream: DStream = pa::Stream::new();
-        
+
         Ok((output_info.name, out_stream_params, stream))
     }
-        
+
     pub fn sample_rate(&self) -> u32 {
         self.flac_info.sample_rate
     }
-        
+
     pub fn bit_depth(&self) -> u8 {
         self.flac_info.bits_per_sample
     }
-    
+
     pub fn channels(&self) -> u8 {
         self.flac_info.n_channels
     }
-    
+
     pub fn n_samples(&self) -> usize {
         self.n_samples
     }
-    
+
     pub fn duration(&self) -> f32 {
         (self.n_samples() as f32) / (self.sample_rate() as f32)
     }
-            
+
     pub fn play(&self) -> DResult<()> {
         let mut stream = self.stream.borrow_mut();
         let mut start_time = self.start_time.borrow_mut();
@@ -202,17 +202,17 @@ impl Demonplayer {
         try!(stream.start());
         Ok(())
     }
-    
-    pub fn position(&self) -> pa::Time {
+
+    pub fn position(&self) -> Option<pa::Time> {
         let stream = self.stream.borrow();
         let start_time = self.start_time.borrow();
         if let Ok(true) = stream.is_active() {
-            stream.get_stream_time() - *start_time
+            Some(stream.get_stream_time() - *start_time)
         } else {
-            0.0
+            None
         }
     }
-    
+
     /*pub fn print_info(&self) {
         let api_name = pa::host::get_api_info(pa::host::get_default_api())
                        .unwrap_or_else(|| {
@@ -222,7 +222,7 @@ impl Demonplayer {
         println!("Demonplayer API: {}", api_name);
         println!("Demonplayer output: {}", self.output_name);
     }
-    
+
     pub fn api(&self) -> Option<String> {
         let default_host = pa::host::get_default_api();
         let api_info = pa::host::get_api_info(default_host);
@@ -240,7 +240,7 @@ impl Drop for Demonplayer {
         .unwrap_or_else(|e| {
             println!("stream.close() failed: {}", e.description());
         });
-        
+
         pa::terminate()
         .unwrap_or_else(|e| {
             println!("pa::terminate() failed: {}", e.description());
