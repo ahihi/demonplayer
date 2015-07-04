@@ -15,9 +15,9 @@ fn wait_for_line(prompt: &str) {
 
 fn main() {
     let player = Demonplayer::from_flac(&Path::new("test.flac"))
-                     .unwrap_or_else(|e| {
-                         panic!("demonplayer init failed: {:?}", e);
-                     });
+                 .unwrap_or_else(|e| {
+                     panic!("demonplayer init failed: {:?}", e);
+                 });
 
     println!("");
     println!("Sample rate: {}", player.sample_rate());
