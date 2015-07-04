@@ -62,7 +62,7 @@ impl Demonplayer {
         println!("Init audio");
         let (_output_name, out_stream_params, stream)
             = try!(Self::init_audio(info.sample_rate as f64));
-            
+        
         println!("Create player");
         let player = Demonplayer {
             flac_info: info,
@@ -72,10 +72,8 @@ impl Demonplayer {
             start_time: RefCell::new(0.0)
         };
 
-        println!("Set callback");
-        
+        // Define callback
         let mut index = 0usize;
-        
         let callback = Box::new(move |
             _input: &[DSample],
             output: &mut[DSample],
@@ -101,6 +99,8 @@ impl Demonplayer {
             result
         });
         
+        // Register callback
+        println!("Register callback");
         try!(player.stream.borrow_mut().open(
             None,
             Some(&player.out_stream_params),
@@ -109,8 +109,6 @@ impl Demonplayer {
             pa::StreamFlags::empty(),
             Some(callback)
         ));
-        //Demonplayer::set_callback(&player);
-        // Construct a custom callback function - in this case we're using a FnMut closure.
         
         println!("Done");
 
