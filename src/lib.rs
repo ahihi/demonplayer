@@ -149,7 +149,6 @@ impl Demonplayer {
                 let ch = block.channel(i_ch);
                 for (i_sample, sample) in ch.iter().enumerate() {
                     let i_buffer = (channels as usize)*(sample_offset + i_sample) + (i_ch as usize);
-                    //println!("i_ch = {}, i_sample = {}, i_buffer = {}, sample = {}", i_ch, i_sample, i_buffer, sample);
                     buffer[i_buffer] = (*sample) << sample_shift;
                 }
             }
@@ -177,35 +176,7 @@ impl Demonplayer {
         
         Ok((output_info.name, out_stream_params, stream))
     }
-    
-    /*fn set_callback(&self) -> DResult<()> {
-        let res = player.stream.borrow_mut().open(
-            None,
-            Some(&player.out_stream_params),
-            player.sample_rate() as f64,
-            FRAMES_PER_BUFFER,
-            pa::StreamFlags::empty(),
-            Some(player.callback)
-        );
-        match res {
-            Ok(_)  => {},
-            Err(e) => panic!("{}", e)
-        }
-        Ok(())
-    }*/
-    
-    /*Box::new(&|
-                _input: &[DSample],
-                output: &mut[DSample],
-                frames: u32,
-                _time_info: &pa::StreamCallbackTimeInfo,
-                _flags: pa::StreamCallbackFlags,
-            | -> pa::StreamCallbackResult {
-                Demonplayer::callback(player, output, frames)
-            });
-    fn */
-    
-    
+        
     pub fn sample_rate(&self) -> u32 {
         self.flac_info.sample_rate
     }
