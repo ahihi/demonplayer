@@ -3,7 +3,6 @@ extern crate portaudio;
 
 use claxon::frame::FrameReader;
 use portaudio::pa;
-use std::cell::RefCell;
 use std::convert::From;
 use std::error::Error;
 use std::fs::File;
@@ -11,6 +10,8 @@ use std::io;
 use std::mem;
 use std::path::Path;
 use std::result::Result;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 const SAMPLE_FORMAT: pa::SampleFormat = pa::SampleFormat::Int32;
 pub type DSample = i32;
@@ -46,13 +47,35 @@ pub type DResult<T> = Result<T, DError>;
 
 const FRAMES_PER_BUFFER: u32 = 512;
 
+pub enum PlayState {
+    Paused,
+    Playing
+}
+
+struct PlayerState {
+    stream: DStream,
+    start_time: pa::Time,
+    index: usize,
+    play_state: PlayState
+}
+
+impl PlayerState {
+    fn new(stream: DStream) -> Self {
+        PlayerState {
+            stream: stream,
+            start_time: 0.0,
+            index: 0,
+            play_state: PlayState::Paused
+        }
+    }
+}
+
 pub struct Demonplayer {
     //output_name: String,
     flac_info: claxon::metadata::StreamInfo,
     n_samples: usize,
-    stream: RefCell<DStream>,
     out_stream_params: pa::StreamParameters,
-    start_time: RefCell<pa::Time>,
+    state: Arc<RwLock<PlayerState>>
 }
 
 impl Demonplayer {
@@ -64,16 +87,10 @@ impl Demonplayer {
             = try!(Self::init_audio(info.sample_rate as f64));
 
         println!("Create player");
-        let player = Demonplayer {
-            flac_info: info,
-            n_samples: n_samples,
-            stream: RefCell::new(stream),
-            out_stream_params: out_stream_params,
-            start_time: RefCell::new(0.0)
-        };
+        let state = Arc::new(RwLock::new(PlayerState::new(stream)));
+        let cb_state = state.clone();
 
         // Define callback
-        let mut index = 0usize;
         let callback = Box::new(move |
             _input: &[DSample],
             output: &mut[DSample],
@@ -82,35 +99,51 @@ impl Demonplayer {
             _flags: pa::StreamCallbackFlags
         | -> pa::StreamCallbackResult {
             assert!(frames == FRAMES_PER_BUFFER);
-
-            let mut result = pa::StreamCallbackResult::Continue;
+            
+            let mut state = cb_state.write().unwrap();
             for output_sample in output.iter_mut() {
-                let sample
-                    = if index < buffer.len() {
-                        buffer[index]
+                let (sample, index_inc) = match state.play_state {
+                    PlayState::Paused => (0, 0),
+                    PlayState::Playing => if state.index < buffer.len() {
+                        (buffer[state.index], 1)
                     } else {
-                        result = pa::StreamCallbackResult::Complete;
-                        0
-                    };
+                        (0, 0)
+                    }
+                };
+                    
                 *output_sample = sample;
-                index += 1;
+                state.index += index_inc;
             }
 
-            result
+            if state.index < buffer.len() {
+                pa::StreamCallbackResult::Continue
+            } else {
+                pa::StreamCallbackResult::Complete
+            }
         });
 
         // Register callback
         println!("Register callback");
-        try!(player.stream.borrow_mut().open(
-            None,
-            Some(&player.out_stream_params),
-            player.sample_rate() as f64,
-            FRAMES_PER_BUFFER,
-            pa::StreamFlags::empty(),
-            Some(callback)
-        ));
-
+        {
+            let mut s = (&state).write().unwrap();
+            try!(s.stream.open(
+                None,
+                Some(&out_stream_params),
+                info.sample_rate as f64,
+                FRAMES_PER_BUFFER,
+                pa::StreamFlags::empty(),
+                Some(callback)                
+            ));
+        }
+        
         println!("Done");
+
+        let player = Demonplayer {
+            flac_info: info,
+            n_samples: n_samples,
+            out_stream_params: out_stream_params,
+            state: state
+        };
 
         Ok(player)
     }
@@ -196,18 +229,18 @@ impl Demonplayer {
     }
 
     pub fn play(&self) -> DResult<()> {
-        let mut stream = self.stream.borrow_mut();
-        let mut start_time = self.start_time.borrow_mut();
-        *start_time = stream.get_stream_time();
-        try!(stream.start());
-        Ok(())
+        let mut state = self.state.write().unwrap();
+        state.play_state = PlayState::Playing;
+        state.start_time = state.stream.get_stream_time();
+        try!(state.stream.start());
+        
+        Ok(())        
     }
-
+        
     pub fn position(&self) -> Option<pa::Time> {
-        let stream = self.stream.borrow();
-        let start_time = self.start_time.borrow();
-        if let Ok(true) = stream.is_active() {
-            Some(stream.get_stream_time() - *start_time)
+        let state = self.state.read().unwrap();
+        if let Ok(true) = state.stream.is_active() {
+            Some(state.stream.get_stream_time() - state.start_time)
         } else {
             None
         }
@@ -236,7 +269,8 @@ impl Demonplayer {
 
 impl Drop for Demonplayer {
     fn drop(&mut self) {
-        self.stream.borrow_mut().close()
+        let mut state = self.state.write().unwrap();
+        state.stream.close()
         .unwrap_or_else(|e| {
             println!("stream.close() failed: {}", e.description());
         });

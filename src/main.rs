@@ -1,16 +1,30 @@
 use std::io;
 use std::path::Path;
-use std::thread::sleep_ms;
+use std::thread;
 
 extern crate demonplayer;
 
 use demonplayer::Demonplayer;
 
-fn wait_for_line(prompt: &str) {
-    let mut reader = io::stdin();
-    println!("{}", prompt);
+#[derive(Debug)]
+enum Command {
+    PlayPause
+}
+
+impl Command {
+    fn from_str(text: &str) -> Option<Self> {
+        match text {
+            "p" => Some(Command::PlayPause),
+            _   => None
+        }
+    }
+}
+
+fn read_command(input: &mut io::Stdin) -> Option<Command> {
     let mut line_buf = "".to_string();
-    let _ = reader.read_line(&mut line_buf).unwrap();
+    let _ = input.read_line(&mut line_buf).unwrap();
+    
+    Command::from_str(&line_buf.trim_right())
 }
 
 fn main() {
@@ -27,11 +41,20 @@ fn main() {
     println!("Duration: {} s", player.duration());
 
     println!("");
-    wait_for_line("Press return to play");
+    println!("Starting playback");
     let _ = player.play();
-
-    loop {
-        println!("Position: {:?}", player.position());
-        sleep_ms(100);
+    
+    let mut stdin = io::stdin();
+    while let Some(pos) = player.position() {
+        println!("Position: {}", pos);
+        thread::sleep_ms(100);
+        /*
+        println!("");
+        println!("Enter command (p = play/pause):");
+        match read_command(&mut stdin) {
+            Some(cmd)   => println!("{:?}", cmd),
+            None        => println!("Unknown command"),
+        }
+        */
     }
 }
